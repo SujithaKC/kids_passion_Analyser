@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings, BarChart3, User, Gamepad2, Video, Palette, PawPrint, Book, Music, Star, Cake, Shirt, Dumbbell, Play } from "lucide-react";
+import { Settings, BarChart3, User, Gamepad2, Video, Palette, PawPrint, Book, Music, Star, Cake, Shirt, Dumbbell, Play, MessageCircle } from "lucide-react";
 import { GameCard } from "@/components/GameCard";
 import { useGame } from "@/context/GameContext";
 import { useToast } from "@/hooks/use-toast";
@@ -12,7 +12,6 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, addDoc } from "firebase/firestore";
 import YouTube, { YouTubeProps } from "react-youtube";
-
 // Game Components
 import { MusicGame } from "@/components/games/MusicGame";
 import { ForestGame } from "@/components/games/ForestGame";
@@ -22,6 +21,7 @@ import { WordLearningGame } from "@/components/games/WordLearningGame";
 import { CookingGame } from "@/components/games/CookingGame";
 import FashionGame from "@/components/games/FashionGame";
 import SportsGame from "@/components/games/SportsGame";
+import ChildChatbot from "@/components/chatbot";
 
 // Video Card Component
 interface VideoCardProps {
@@ -81,7 +81,7 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
   const { recordGameSession, currentChild, setCurrentChild } = useGame();
   const { toast } = useToast();
   const [parentUid, setParentUid] = useState<string | null>(null);
-  const [tab, setTab] = useState<"games" | "video">("games");
+  const [tab, setTab] = useState<"games" | "video" | "chatbot">("games");
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>("Colouring");
 
@@ -380,7 +380,7 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
     ].slice(0, 10),
   };
 
-  const currentVideos = selectedCategory ? videoCategories[selectedCategory] : [];
+  const currentVideos = selectedCategory ? videoCategories[selectedCategory as keyof typeof videoCategories] : [];
 
   if (selectedGame) {
     const game = games.find((g) => g.id === selectedGame);
@@ -389,16 +389,12 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
       return (
         <GameComponent
           onGameComplete={(score, timeSpent) => handleGameComplete(selectedGame, score, timeSpent)}
-          onBack={() => setSelectedGame(null)}
-        />
+          onBack={() => setSelectedGame(null)}     />
       );
     }
   }
 
   return (
- 
-     
-        
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-accent/5 p-4">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
@@ -411,28 +407,45 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
             Discover your child's natural talents through fun games!
           </p>
         </div>
-{/* Navigation Bar */}
-<nav className="bg-white shadow-md rounded-lg px-4 py-2 flex justify-center gap-4 items-center w-fit mx-auto">
-  <Button
-    onClick={() => setTab("games")}
-    className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${
-      tab === "games" ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
-    }`}
-  >
-    <Gamepad2 className="w-4 h-4" />
-    Games
-  </Button>
 
-  <Button
-    onClick={() => setTab("video")}
-    className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${
-      tab === "video" ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
-    }`}
-  >
-    <Video className="w-4 h-4" />
-    Video
-  </Button>
-</nav>
+        {/* Navigation Bar */}
+        <nav className="bg-white shadow-md rounded-lg px-4 py-2 flex justify-center gap-4 items-center w-fit mx-auto">
+          <Button
+            onClick={() => setTab("games")}
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${
+              tab === "games"
+                ? "bg-primary text-white"
+                : "bg-transparent text-primary hover:bg-primary/10"
+            }`}
+          >
+            <Gamepad2 className="w-4 h-4" />
+            Games
+          </Button>
+
+          <Button
+            onClick={() => setTab("video")}
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${
+              tab === "video"
+                ? "bg-primary text-white"
+                : "bg-transparent text-primary hover:bg-primary/10"
+            }`}
+          >
+            <Video className="w-4 h-4" />
+            Video
+          </Button>
+
+          <Button
+            onClick={() => setTab("chatbot")}
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${
+              tab === "chatbot"
+                ? "bg-primary text-white"
+                : "bg-transparent text-primary hover:bg-primary/10"
+            }`}
+          >
+            <MessageCircle className="w-4 h-4" />
+            Chatbot
+          </Button>
+        </nav>
 
         {/* Content Based on Tab */}
         {tab === "games" && (
@@ -466,8 +479,8 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
 
             {/* Child Name Input Modal */}
             {showNameInput && (
-              <Card className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <Card className="p-6 max-w-md w-full mx-4">
                   <h3 className="text-xl font-bold mb-4">Enter Child's Name</h3>
                   <div className="space-y-4">
                     <div>
@@ -503,8 +516,8 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
                       </Button>
                     </div>
                   </div>
-                </div>
-              </Card>
+                </Card>
+              </div>
             )}
 
             {/* Games Grid */}
@@ -542,8 +555,8 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
                     key={category}
                     title={category}
                     description={`Explore ${category.toLowerCase()} videos for kids!`}
-                    icon={videoCategories[category][0].icon}
-                    color={videoCategories[category][0].color}
+                    icon={videoCategories[category as keyof typeof videoCategories][0].icon}
+                    color={videoCategories[category as keyof typeof videoCategories][0].color}
                     onClick={() => setSelectedCategory(category)}
                   />
                 ))}
@@ -567,15 +580,24 @@ export const GameSelector = ({ onShowDashboard }: GameSelectorProps) => {
                       onClick={() => setSelectedVideoId(video.id)}
                     />
                   ))}
-               
-                 </div>
-                 {selectedVideoId && (
+                </div>
+                {selectedVideoId && (
                   <div className="flex justify-center mt-6">
                     <YouTube videoId={selectedVideoId} opts={videoOptions} onReady={onYouTubeReady} />
                   </div>
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {tab === "chatbot" && (
+          <div>
+            <h1 className="text-4xl font-bold text-center mb-6">Chat with Buddy!</h1>
+            <p className="text-center text-lg mb-4 text-muted-foreground">
+              Ask questions and get help from our friendly chatbot!
+            </p>
+            <ChildChatbot parentUid={parentUid} />
           </div>
         )}
       </div>
