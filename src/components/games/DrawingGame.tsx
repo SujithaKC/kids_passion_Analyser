@@ -206,7 +206,14 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
   const { toast } = useToast();
   const [draggedShapeId, setDraggedShapeId] = useState<number | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
-
+  
+  // ⭐ NEW STATES FOR DRAWING ANALYSIS
+  const [strokes, setStrokes] = useState<
+    { points: { x: number; y: number }[]; color: string; size: number }[]
+  >([]);
+  const currentStroke = useRef<{ x: number; y: number }[]>([]);
+  const [colorUsage, setColorUsage] = useState<Map<string, number>>(new Map());
+  
   const colors = [
     "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
     "#DDA0DD", "#F8BBD9", "#FFB347", "#98D8C8", "#A8E6CF"
@@ -214,42 +221,59 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
 
   const startDrawing = (e: React.MouseEvent) => {
     setIsDrawing(true);
-    setScore(prev => prev + 1);
+    currentStroke.current = [];
     draw(e);
   };
-
+  
   const draw = (e: React.MouseEvent) => {
     if (!isDrawing) return;
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
+
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    
+
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     ctx.lineWidth = brushSize;
-    ctx.lineCap = 'round';
+    ctx.lineCap = "round";
     ctx.strokeStyle = currentColor;
-    
+
     ctx.lineTo(x, y);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x, y);
+
+    // ⭐ Track stroke path
+    currentStroke.current.push({ x, y });
   };
 
   const stopDrawing = () => {
     setIsDrawing(false);
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.beginPath();
-      }
+
+    if (currentStroke.current.length > 0) {
+      // Add stroke with its color and size
+      setStrokes((prev) => [...prev, { 
+        points: currentStroke.current, 
+        color: currentColor,
+        size: brushSize 
+      }]);
+      
+      // Track color usage
+      setColorUsage(prev => {
+        const newMap = new Map(prev);
+        const count = newMap.get(currentColor) || 0;
+        newMap.set(currentColor, count + 1);
+        return newMap;
+      });
     }
+
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    ctx?.beginPath();
   };
 
   const clearCanvas = () => {
@@ -260,6 +284,10 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
+    
+    // ⭐ Reset stroke tracking
+    setStrokes([]);
+    setColorUsage(new Map());
     
     toast({
       title: "🎨 Canvas Cleared!",
@@ -276,15 +304,183 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
       duration: 2000,
     });
   };
+  
+  // ⭐ IMPROVED DRAWING ANALYSIS FUNCTION
+  const analyzeDrawingQuality = (): {
+    category: string;
+    score: number;
+    details: { strokes: number; colors: number; curves: number; patterns: number; coverage: number };
+  } => {
+    if (strokes.length === 0) return { 
+      category: "No Drawing",
+      score: 0,
+      details: {
+        strokes: 0,
+        colors: 0,
+        curves: 0,
+        patterns: 0,
+        coverage: 0
+      }
+    };
+
+    // Count strokes
+    const strokeCount = strokes.length;
+    
+    // Calculate total length
+    let totalLength = 0;
+    let angleChanges = 0;
+    let closedShapes = 0;
+    let complexity = 0;
+    
+    // Track color variety
+    const uniqueColors = colorUsage.size;
+    
+    // Track drawing bounds
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+
+    strokes.forEach((stroke) => {
+      const pts = stroke.points;
+      if (pts.length < 3) return;
+
+      // Calculate stroke length
+      for (let i = 1; i < pts.length; i++) {
+        const dx = pts[i].x - pts[i - 1].x;
+        const dy = pts[i].y - pts[i - 1].y;
+        totalLength += Math.hypot(dx, dy);
+
+        // Update bounds
+        minX = Math.min(minX, pts[i].x);
+        minY = Math.min(minY, pts[i].y);
+        maxX = Math.max(maxX, pts[i].x);
+        maxY = Math.max(maxY, pts[i].y);
+
+        // Detect angle changes (curves)
+        if (i > 1) {
+          const dx1 = pts[i - 1].x - pts[i - 2].x;
+          const dy1 = pts[i - 1].y - pts[i - 2].y;
+          const dx2 = pts[i].x - pts[i - 1].x;
+          const dy2 = pts[i].y - pts[i - 1].y;
+
+          const angle1 = Math.atan2(dy1, dx1);
+          const angle2 = Math.atan2(dy2, dx2);
+          const angleDiff = Math.abs(angle2 - angle1);
+          
+          if (angleDiff > 0.5) angleChanges++;
+        }
+      }
+
+      // Detect closed shape (potential circle/loop)
+      const start = pts[0];
+      const end = pts[pts.length - 1];
+      const distance = Math.hypot(end.x - start.x, end.y - start.y);
+      if (distance < 30 && pts.length > 10) {
+        closedShapes++;
+      }
+    });
+
+    // Calculate coverage area
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const area = width * height;
+    const canvasArea = 600 * 400;
+    const coverageRatio = area / canvasArea;
+
+    // ⭐ COMPREHENSIVE SCORING SYSTEM
+    
+    // Base score from stroke count (more strokes = more effort)
+    let totalScore = 0;
+    
+    // Stroke count scoring (0-30 points)
+    if (strokeCount >= 20) totalScore += 30;
+    else if (strokeCount >= 10) totalScore += 20;
+    else if (strokeCount >= 5) totalScore += 10;
+    else totalScore += strokeCount * 2;
+
+    // Color variety scoring (0-20 points)
+    if (uniqueColors >= 5) totalScore += 20;
+    else if (uniqueColors >= 3) totalScore += 15;
+    else if (uniqueColors >= 2) totalScore += 10;
+    else totalScore += 5;
+
+    // Complexity scoring (angle changes) (0-25 points)
+    if (angleChanges > 50) totalScore += 25;
+    else if (angleChanges > 30) totalScore += 20;
+    else if (angleChanges > 15) totalScore += 15;
+    else if (angleChanges > 5) totalScore += 10;
+    else totalScore += 5;
+
+    // Coverage scoring (0-15 points)
+    if (coverageRatio > 0.5) totalScore += 15;
+    else if (coverageRatio > 0.3) totalScore += 10;
+    else if (coverageRatio > 0.1) totalScore += 5;
+
+    // Closed shapes/patterns scoring (0-10 points)
+    if (closedShapes >= 3) totalScore += 10;
+    else if (closedShapes >= 1) totalScore += 5;
+
+    // ⭐ CATEGORIZATION BASED ON SCORE
+    
+    let category = "";
+    if (totalScore >= 80) {
+      category = "🌟 Masterpiece! Detailed artwork with rich colors";
+    } else if (totalScore >= 60) {
+      category = "🎨 Great Drawing! Shows good effort and creativity";
+    } else if (totalScore >= 40) {
+      category = "✏️ Good Start! Keep adding more details";
+    } else if (totalScore >= 20) {
+      category = "🖍️ Basic Drawing - Try using more colors and strokes";
+    } else {
+      category = "⚡ Quick Scribble - Practice making detailed drawings";
+    }
+
+    // Additional context for scribble detection
+    if (strokeCount < 5 && uniqueColors < 2 && coverageRatio < 0.2) {
+      category = "📝 Quick Scribble - Try drawing something specific!";
+    } else if (strokeCount > 15 && uniqueColors > 3 && closedShapes > 2) {
+      category = "🏆 Excellent Work! Very detailed and creative!";
+    }
+
+    return {
+      category,
+      score: totalScore,
+      details: {
+        strokes: strokeCount,
+        colors: uniqueColors,
+        curves: angleChanges,
+        patterns: closedShapes,
+        coverage: Math.round(coverageRatio * 100)
+      }
+    };
+  };
 
   const endGame = () => {
     const timeSpent = (Date.now() - startTime) / 1000;
-    onGameComplete(score, timeSpent);
+    const analysis = analyzeDrawingQuality();
     
+    // ⭐ Update score based on drawing quality
+    const qualityScore = analysis.score;
+    const finalScore = score + qualityScore;
+    setScore(finalScore);
+
+    onGameComplete(finalScore, timeSpent);
+
+    // ⭐ Detailed feedback toast
     toast({
-      title: "🎨 Drawing Game Complete!",
-      description: `You created beautiful art and scored ${score} points!`,
-      duration: 3000,
+      title: "🎨 Drawing Analysis Complete!",
+      description: (
+        <div className="mt-2 space-y-1">
+          <p className="font-semibold">{analysis.category}</p>
+          <p>📊 Stats:</p>
+          <p>  • Strokes: {analysis.details.strokes}</p>
+          <p>  • Colors used: {analysis.details.colors}</p>
+          <p>  • Curves: {analysis.details.curves}</p>
+          <p>  • Patterns: {analysis.details.patterns}</p>
+          <p>  • Coverage: {analysis.details.coverage}%</p>
+          <p className="text-lg font-bold mt-1">Score: +{qualityScore} points!</p>
+        </div>
+      ),
+      duration: 5000,
     });
   };
 
@@ -307,6 +503,14 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
     if (target && target.getAttribute('fill') === 'white') {
       target.setAttribute('fill', svgColor);
       setScore((prev) => prev + 10);
+      
+      // ⭐ Track color usage in coloring mode
+      setColorUsage(prev => {
+        const newMap = new Map(prev);
+        const count = newMap.get(svgColor) || 0;
+        newMap.set(svgColor, count + 1);
+        return newMap;
+      });
     }
   };
 
@@ -329,6 +533,14 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
   const handleShapeClick = (id: number) => {
     setPlacedShapes((prev) => prev.map(s => s.id === id ? { ...s, color: currentColor } : s));
     setScore((prev) => prev + 10);
+    
+    // ⭐ Track color usage for shapes
+    setColorUsage(prev => {
+      const newMap = new Map(prev);
+      const count = newMap.get(currentColor) || 0;
+      newMap.set(currentColor, count + 1);
+      return newMap;
+    });
   };
 
   // Mouse/touch handlers for dragging shapes
@@ -407,7 +619,7 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
         <div className="flex justify-between items-center mb-6">
           <div className="text-2xl font-bold text-art">Score: {score}</div>
           <div className="text-lg text-art">
-            Keep drawing to earn more points!
+            Strokes: {strokes.length} | Colors: {colorUsage.size}
           </div>
         </div>
 
@@ -579,7 +791,16 @@ export const DrawingGame = ({ onGameComplete }: DrawingGameProps) => {
                       style={{ cursor: 'pointer' }}
                     />
                   </div>
-                  <Button onClick={() => setScore((prev) => prev + 50)} className="bg-art/20 hover:bg-art/30 text-art p-4 h-16">Finish Coloring</Button>
+                  <Button onClick={() => {
+                    setScore((prev) => prev + 50);
+                    toast({
+                      title: "🎨 Coloring Complete!",
+                      description: `You used ${colorUsage.size} different colors!`,
+                      duration: 2000,
+                    });
+                  }} className="bg-art/20 hover:bg-art/30 text-art p-4 h-16">
+                    Finish Coloring
+                  </Button>
                 </div>
               </>
             )}
