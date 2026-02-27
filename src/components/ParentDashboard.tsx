@@ -625,7 +625,7 @@ For questions, please contact support@childlearningplatform.com
             </div>
           </Card>
 
-          <Card className="p-6">
+          {/* <Card className="p-6">
             <div className="flex items-center space-x-2">
               <Clock className="w-8 h-8 text-accent" />
               <div>
@@ -633,7 +633,7 @@ For questions, please contact support@childlearningplatform.com
                 <p className="text-2xl font-bold">{Math.round(stats.totalTimeSpent / 60)}m</p>
               </div>
             </div>
-          </Card>
+          </Card> */}
 
           <Card className="p-6">
             <div className="flex items-center space-x-2">
@@ -784,7 +784,7 @@ For questions, please contact support@childlearningplatform.com
         <Card className="p-6">
           <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
             <Brain className="w-5 h-5 text-primary" />
-            ML-Powered Insights
+            Insights
           </h3>
           <div className="grid gap-4">
             <div className="bg-gradient-to-r from-primary/10 to-accent/10 p-4 rounded-lg">
